@@ -1,0 +1,12 @@
+# Emacs backup files
+*~
+*#
+
+.DS_Store
+__pycache__
+
+*.log
+mySQlite.db
+mySQlite.db-journal
+
+
