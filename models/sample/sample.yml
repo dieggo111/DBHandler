@@ -1,0 +1,442 @@
+################################################################################
+######################## ETP Measurement DB Config File ########################
+################################################################################
+
+###########################################################################
+# engine: Pick SQLAlchemy engine. mysql+mysqlconnector or sqlite
+#         are supported
+# credentials: Path to file containing DB credentials. Can be absolute or
+#              relative to dbhandler folder
+# map: Location of DB map file. Use python package import style syntax
+#      relative("." as a folder separator, no file extension) to a folder
+#      listed in sys.path (e.g. working directory)
+# tables: names of the table classes (not table names!)
+# measurement type key: Name of header key that defines the measurement
+# cross-reference:  specifies which cross-references need to added to
+#                   the data
+###########################################################################
+engine : mysql+mysqlconnector
+
+credentials :   cred_sample.cfg
+
+map         :   measurementcontrol.modules.dbhandler.models.sample.sample_map
+
+tables      :
+                db_info              : upload=never
+                db_probe             : upload=once
+                db_probe_data        : upload=always
+                db_irradiation       : upload=never
+                db_annealing         : upload=never
+                db_alibava           : upload=never
+                db_operator          : upload=never
+
+measurement type key: measurement
+
+cross-reference:
+                db_probe:
+                            table name : db_info
+                            para : id
+                            para option : None
+                            keyword :
+                                      - name
+                                      - project
+                db_probe_data:
+                            table name : db_probe
+                            para : probeid
+                            para option : latest
+                            keyword : None
+
+###########################################################################
+# Determine how a data container is rearranged in order to fit the
+# structure of your database.
+# {Measurement: {header: {table1_DB: {key_DB: key_data, ...}, ...}}}, ...}
+# Every given key is considered mandatory for the upload. An asterix (*)
+# signals that the key is a DB constant that needs to be added to the data.
+###########################################################################
+table assignment:
+    iv:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Voltage*
+                                    paraY: I_tot*
+        data:
+                db_probe_data:
+                                    datax: voltage
+                                    datay: current
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+
+    cv:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    frequency: frequency
+                                    paraX: Voltage*
+                                    paraY: C_tot*
+                                    paraZ: Conductance*
+        data:
+                db_probe_data:
+                                    datax: voltage
+                                    datay: capacitance
+                                    dataz: rp
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+
+    r_poly:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Strip*
+                                    paraY: R_poly_dc*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: strip
+                                    datay: r_poly
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+
+    i_leak:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Strip*
+                                    paraY: I_leak_dc*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: strip
+                                    datay: current
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+
+    pinhole:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Strip*
+                                    paraY: Pinhole*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: strip
+                                    datay: current
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+
+    cc:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Strip*
+                                    paraY: CC*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: strip
+                                    datay: capacitance
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+
+    r_int:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Strip*
+                                    paraY: R_int*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: strip
+                                    datay: r_int
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+
+    c_int:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Strip*
+                                    paraY: C_int*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: strip
+                                    datay: capacitance
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+    CV_t/C_tot:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    frequency: frequency
+                                    paraX: Time*
+                                    paraY: C_tot*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: relative_time
+                                    datay: capacitance
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+
+    Rint_t/R_int:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Time*
+                                    paraY: R_int*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: relative_time
+                                    datay: r_int
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+    Rpoly_t/R_poly:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Time*
+                                    paraY: R_poly*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: relative_time
+                                    datay: r_poly
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+    CC_t/CC:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Time*
+                                    paraY: CC*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: relative_time
+                                    datay: capacitance
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+
+    Cint_t/C_int:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Time*
+                                    paraY: C_int*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: relative_time
+                                    datay: capacitance
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+
+    r_int_ramp:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Strip*
+                                    paraY: R_int_Ramp*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: strip
+                                    datay: r_int
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity
+
+    c_int_ramp:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    RH: humidity
+                                    cern_timestamp: cerntimestamp
+                                    flag: flag
+                                    guardring: guardring
+                                    station: station
+                                    paraX: Strip*
+                                    paraY: C_int_Ramp*
+                                    paraZ: Voltage*
+        data:
+                db_probe_data:
+                                    datax: strip
+                                    datay: capacitance
+                                    dataz: voltage
+                                    time: timestamp
+                                    temperature: temperature
+                                    RH: humidity

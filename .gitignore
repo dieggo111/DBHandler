@@ -8,5 +8,4 @@ __pycache__
 *.log
 mySQlite.db
 mySQlite.db-journal
-
-
+.gitignore

@@ -1,0 +1,142 @@
+################################################################################
+######################## ETP Measurement DB Config File ########################
+################################################################################
+
+###########################################################################
+# engine: Pick SQLAlchemy engine. mysql+mysqlconnector or sqlite
+#         are supported
+# credentials: Path to file containing DB credentials. Can be absolute or
+#              relative to dbhandler folder
+# map: Location of DB map file. Use python package import style syntax
+#      relative("." as a folder separator, no file extension) to a folder
+#      listed in sys.path (e.g. working directory)
+# tables: names of the table classes (not table names!)
+# measurement type key: Name of header key that defines the measurement
+# cross-reference:  specifies which cross-references need to added to
+#                   the data
+###########################################################################
+engine : sqlite
+
+credentials :   None
+
+map         :   measurementcontrol.modules.dbhandler.models.default.default_map
+
+tables      :
+                db_info              : upload=never
+                db_probe             : upload=once
+                db_probe_data        : upload=always
+                db_probe_subdata     : upload=always
+
+measurement type key: measurement
+
+cross-reference:
+                db_probe:
+                                table name : db_info
+                                para : id
+                                para option : None
+                                keyword :
+                                          - name
+                                          - project
+                db_probe_data:
+                                table name : db_probe
+                                para : probeid
+                                para option : latest
+                                keyword : None
+                db_probe_subdata:
+                                table name : db_probe_data
+                                para : probe_uid
+                                para option : ascending
+                                keyword : None
+
+
+###########################################################################
+# Determine how a data container is rearranged in order to fit the
+# structure of your database.
+# {Measurement: {header: {table1_DB: {key_DB: key_data, ...}, ...}}}, ...}
+# Every given key is considered mandatory for the upload. An asterix (*)
+# signals that the key is a DB constant that needs to be added to the data.
+###########################################################################
+table assignment:
+    I_tot:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    flag: flag
+                                    guardring: guardring
+                                    paraX: Voltage*
+                                    paraY: I_tot*
+        data:
+                db_probe_data:
+                                    datax: high_voltage_set_voltage
+                                    datay: amperemeter_read_current
+                                    time: timestamp
+
+
+    C_tot:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    flag: flag
+                                    guardring: guardring
+                                    paraX: Voltage*
+                                    paraY: C_tot*
+        data:
+                db_probe_data:
+                                    datax: high_voltage_set_voltage
+                                    datay: lcr_read_capacitance
+                                    time: timestamp
+
+
+    I_leak:
+            header:
+                    db_info:
+                                        name: name
+                                        project: project
+                    db_probe:
+                                        operator: operator
+                                        date: date
+                                        temperature: temperature
+                                        flag: flag
+                                        guardring: guardring
+                                        paraX: Voltage*
+                                        paraY: I_leak*
+            data:
+                    db_probe_data:
+                                        datax: high_voltage_set_voltage
+                                        datay: amperemeter_read_current
+                                        time: timestamp
+
+
+    R_poly:
+        header:
+                db_info:
+                                    name: name
+                                    project: project
+                db_probe:
+                                    operator: operator
+                                    date: date
+                                    temperature: temperature
+                                    flag: flag
+                                    guardring: guardring
+                                    paraX: Voltage*
+                                    paraY: R_poly_dc*
+        data:
+                db_probe_data:
+                                    datax: motor_goto_strip
+                                    datay: r_poly
+                                    dataz: high_voltage_set_voltage
+                                    time: timestamp
+                db_probe_subdata:
+                                    ramp:
+                                       dataX: low_voltage_set_voltage
+                                       dataY: amperemeter_read_current

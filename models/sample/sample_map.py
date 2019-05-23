@@ -1,13 +1,13 @@
-# pylint: disable=C0326, C0103, R0903, C0111
-from sqlalchemy import BigInteger, Column, Integer, String, Float, DateTime, Date, Enum, Boolean, LargeBinary
-from sqlalchemy.ext.declarative import declarative_base
-BASE = declarative_base()
+# pylint: disable=C0326, C0103, R0903, C0111, E0402
+from sqlalchemy import BigInteger, Column, Integer, String, Float, DateTime
+from sqlalchemy import Date, Enum, Boolean, LargeBinary
+from ..meta import BASE
 
 class db_info(BASE):
 
     __tablename__ = "info"
 
-    ID              = Column(Integer, primary_key=True)
+    id              = Column(Integer, primary_key=True)
     name            = Column(String)
     project         = Column(String)
     manufacturer    = Column(String)
@@ -35,10 +35,10 @@ class db_probe(BASE):
     __tablename__ = "probe"
 
     probeid         = Column(Integer, primary_key=True)
-    ID              = Column(Integer)
+    id              = Column(Integer)
     paraX           = Column(String)
     paraY           = Column(String)
-    paraX           = Column(String)
+    paraZ           = Column(String)
     date            = Column(DateTime)
     operator        = Column(String)
     temperature     = Column(Float)
@@ -47,7 +47,7 @@ class db_probe(BASE):
     frequency       = Column(Float)
     comment         = Column(String)
     flag            = Column(Enum("good", "bad", "meas", "valid"))
-    cern_timestamp  = Column(DateTime)
+    cern_timestamp  = Column(Integer)
     guardring       = Column(Boolean)
     amplitude_LCR   = Column(Float)
     mode_LCR        = Column(Enum("parallel", "serial"))
@@ -57,6 +57,8 @@ class db_probe(BASE):
     bias            = Column(Float)
     Vdep            = Column(Float)
     fitmode         = Column(Integer)
+    annealing_id    = Column(Integer)
+    irradiation_id  = Column(Integer)
 
 class db_probe_data(BASE):
 
@@ -79,7 +81,7 @@ class db_alibava(BASE):
 
     alibava_uid             = Column(Integer, primary_key=True)
     run                     = Column(Integer)
-    ID                      = Column(Integer)
+    id                      = Column(Integer)
     ped_run                 = Column(Integer)
     date                    = Column(DateTime)
     source                  = Column(String)
@@ -91,7 +93,7 @@ class db_alibava(BASE):
     z_position              = Column(Float)
     signal                  = Column(Float)
     sigma_signal            = Column(Float)
-    electron_sig             = Column(Float)
+    electron_sig            = Column(Float)
     signal_e_err            = Column(Float)
     trigger                 = Column(Integer)
     chi2_signal             = Column(Float)
@@ -130,7 +132,7 @@ class db_alibava(BASE):
     Signal_chi2_ndf         = Column(Float)
     calib_run               = Column(Integer)
     gain                    = Column(Float)
-    pdf                     = Column(LargeBinary)
+    # pdf                     = Column(LargeBinary)
     last_analyzed           = Column(DateTime)
     ThresholdAt995          = Column(Float)
     annealing_id            = Column(Integer)
@@ -141,7 +143,7 @@ class db_annealing(BASE):
     __tablename__ = "annealing"
 
     annealing_id            = Column(Integer, primary_key=True)
-    ID                      = Column(Integer)
+    id                      = Column(Integer)
     date                    = Column(DateTime)
     temperature             = Column(Float)
     time                    = Column(Float)
@@ -154,9 +156,9 @@ class db_irradiation(BASE):
     __tablename__ = "irradiation"
 
     uirrad_id           = Column(Integer,primary_key=True)
-    ID                  = Column(Integer)
+    id                  = Column(Integer)
     F_n_cm2             = Column(Float)
-    particletype        = Column(Enum("n","p","pi"))
+    particletype        = Column(Enum("n", "p", "pi", "x"))
     date                = Column(DateTime)
     starttime           = Column(DateTime)
     endtime             = Column(DateTime)
@@ -176,3 +178,10 @@ class db_irradiation(BASE):
     groupname           = Column(String)
     F_sum               = Column(Float(50))
     particles           = Column(String)
+
+class db_operator(BASE):
+    __tablename__ = "define_operator"
+
+    id                  = Column(Integer, primary_key=True)
+    operator            = Column(String)
+    fullname            = Column(String)

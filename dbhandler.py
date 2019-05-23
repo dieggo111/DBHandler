@@ -1,10 +1,14 @@
 "DBHandler module"
 import logging
-import json
 import os
+import sys
 import datetime
-import pickle
+import json
+import inspect
+import copy
 from pydoc import locate
+from flask import request
+from flask_restplus import fields
 import yaml
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
@@ -12,13 +16,25 @@ try:
     from .models import meta
 except (ModuleNotFoundError, ImportError):
     from models import meta
+# absolute path of dbhandler module
+MODPATH = os.path.dirname(\
+    os.path.abspath(inspect.getfile(inspect.currentframe())))
+try:
+    from measurementcontrol.core import Module, Endpoint
+# in case DBHandler is imported from an arbitrary location
+except (ModuleNotFoundError, ImportError):
+    from pathlib import Path
+    MODPATH = os.path.dirname(\
+        os.path.abspath(inspect.getfile(inspect.currentframe())))
+    sys.path.insert(0, str(Path(MODPATH).parents[2]))
+    from measurementcontrol.core import Module, Endpoint
 
-DEFAULT_MODEL = os.path.join("models", "default")
+DEFAULT_MODEL = os.path.join("models", "default", "default.yml")
 # define header names of incomming data
 HEADER = "header"        # header name is mendatory
 DATA_HEADER = ["data"]   # at least one data_header is mendatory
 
-class DBHandler(object):
+class DBHandler(Module): #pylint: disable=R0902
     """Database handling
 
     Methods:
@@ -28,6 +44,8 @@ class DBHandler(object):
         - add_item:         adds dict to DB table
         - get_table_keys:   gets list of all DB table keys
         - get_values:       returns all values of key in DB table
+        - update_all_values:changes certain value of all items in table
+        - update_value:     changes a certain value of certain items
         - check_for_value:  checks if value is in DB table or not
         - untangle_data:    untangles a data container and adjusts data so that
                             data can be added to respective table
@@ -35,31 +53,48 @@ class DBHandler(object):
         - get_dbt:          returns DBTable object
         - get_session:      returns the session object
     """
-    def __init__(self, db_cfg=None):
-        """Load credentials, DB structure and name of DB map from cfg file,
-           create DB session. Create DBTable object to get table names of DB
-           from cfg file, import table classes and get name of primary keys.
-           If no credentials are given, then a default SQlite DB file is
-           created.
+    _type = 'dbhandler'
 
-        Args:
-            - db_cfg (yaml) : contains infos about DB structure and location of
-                              DB credentials.
-        Misc:
+    def __init__(self, *args, **kwargs):
+        """The initialization is mostly done by the module base class
+        (setting up logger, connecting to backend, etc). If the DBHandler is
+        used outside of the MC framework:
+            - pass the location of the DB cfg file as an argument
+            - pass 'default' to run with the default local sqlite DB
+              (also used for unittest)
+
+        Expected structure of DB credential file:
             - cred = {"host"      : "...",
 			          "database"  : "...",
 			          "user"      : "...",
 			          "passwd"    : "..."}
         """
-        self.log = logging.getLogger("mc." + __class__.__name__)
-        self.log.setLevel(logging.DEBUG)
-        self.log.info("DBHandler")
-        stream = logging.StreamHandler()
-        self.log.addHandler(stream)
+        self.cfg_path = ""
+        for arg in args:
+            if os.path.isfile(arg) or arg == "default":
+                self.cfg_path = arg
+        super().__init__(*args, **kwargs)
 
-        db_cfg = self.load_cfg(db_cfg)
+    def _apply_config(self):
+        """Is called by the base class during initialization. Loads
+        credentials, DB structure and name of DB map from cfg file,
+        creates DB session. Creates DBTable object to get table names of DB
+        from cfg file, imports table classes and gets name of primary keys.
+        """
+        if self.cfg_path == "":
+            # deprecated?
+            if "modelpath" in self.config['dbhandler'].keys():
+                db_cfg = self.load_cfg(\
+                        self.config['dbhandler']["modelpath"])
+            else:
+                model = self.config['dbhandler'].get("model", "default")
+                self.log.debug("Load model '%s'", model)
+                db_cfg = self.load_cfg(os.path.join(MODPATH,\
+                                'models/{0}/{0}.yml'.format(model)))
+        else:
+            db_cfg = self.load_cfg(self.cfg_path)
 
-        self.dbt = DBTable(map_file=db_cfg["map"],
+        self.dbt = DBTable(map_file=db_cfg["map"], #pylint: disable=W0201
                            table_dict=db_cfg["tables"],
                            cr_dict=db_cfg["cross-reference"])
 
@@ -67,9 +102,13 @@ class DBHandler(object):
             engine = sqlalchemy.create_engine("sqlite:///mySQlite.db")
             meta.BASE.metadata.create_all(engine, checkfirst=True)
             session = sessionmaker(bind=engine)
-            self.session = session()
+            self.session = session() #pylint: disable=W0201
         elif db_cfg["engine"] == "mysql+mysqlconnector":
-            cred = self.load_cred(db_cfg["credentials"])
+            if os.path.isabs(db_cfg["credentials"]):
+                cred = self.load_cred(db_cfg["credentials"])
+            else:
+                cred = self.load_cred(os.path.join(MODPATH,
+                                                   db_cfg["credentials"]))
             engine = sqlalchemy.create_engine(db_cfg["engine"]
                                               + "://"
                                               + cred["user"] + ":"
@@ -78,14 +117,13 @@ class DBHandler(object):
                                               + "3306" + "/"
                                               + cred["database"])
             session = sessionmaker(bind=engine)
-            self.session = session()
+            self.session = session() #pylint: disable=W0201
         else:
             self.log.warning("Unkown engine in DB cfg...")
 
-        self.table_ass = db_cfg["table assignment"]
-        self.key_ass = db_cfg["key assignment"]
-        self.meas_tk = db_cfg["measurement type key"]
-        self.cross_ref = db_cfg["cross-reference"]
+        self.table_ass = db_cfg["table assignment"] #pylint: disable=W0201
+        self.meas_tk = db_cfg["measurement type key"] #pylint: disable=W0201
+        self.cross_ref = db_cfg["cross-reference"] #pylint: disable=W0201
 
         if self.dbt.all_names() == []:
             self.log.warning("Import of table classes failed...")
@@ -98,34 +136,99 @@ class DBHandler(object):
     def load_cred(self, arg):
         """Handles the import of credentials"""
         try:
-            cred = pickle.load(open(arg, "rb"))
+            cred = yaml.load(open(arg, "rb"))
+            self.log.debug("Loaded credentials from %s", arg)
             return cred
-        except FileNotFoundError:             #pylint: disable = W0702
+        except FileNotFoundError:
             self.log.error("Couldn't find or read credentials...")
 
     def load_cfg(self, db_cfg):
-        """Handles the import of cfg dict."""
+        """Handles the import of cfg dict.
+            - Load default SQLlite model if db_cfg is'default'
+            - return db_cfg as it is, if not a path
+        """
         try:
-            if db_cfg is None:
-                db_cfg = os.path.join(DEFAULT_MODEL,
-                                      "default_DB.cfg")
+            if isinstance(db_cfg, dict):
+                return db_cfg
+            if db_cfg == "default":
+                db_cfg = os.path.join(MODPATH, DEFAULT_MODEL)
             with open(db_cfg, "r") as cfg:
                 db_cfg = yaml.load(cfg)
                 cfg.close()
             return db_cfg
         except TypeError:
-            assert isinstance(db_cfg, dict)
-            return db_cfg
-        except FileNotFoundError:
-            self.log.error("Couldn't find default resources...")
+            self.log.error("Failed to load DB resources. Unexpected type(arg)")
             raise ImportError
+        except FileNotFoundError:
+            self.log.error("Failed to load DB resources...")
+            raise ImportError
+
+    def update_value(self, new_val, prim_key_lst, #pylint: disable=R0913
+                     prim_key="probeid", update_key="id", table="db_probe"):
+        """Update values of certain key of items.
+        Args:
+            - new_val: the new value you want to update for
+            - prim_key_lst (list): list of primary keys to identify target
+                                   items you want to update
+            - prim_key (str): the name of the table's primary key
+            - update_key (str): the name of the key you want to update
+            - table (str/DBT object): the table that contains the items you
+                                      want to update
+        """
+        if isinstance(table, str):
+            table = self.dbt.obj(table)
+        if prim_key == self.dbt.primkey(table):
+            for _pk in prim_key_lst:
+                self.session.query(table).filter(
+                    getattr(table, prim_key) == _pk).\
+                    update({getattr(table, update_key) : new_val})
+                self.log.info("Changed '%s' of '%s' to %s", update_key,
+                              str(_pk), str(new_val))
+        else:
+            self.log.error("Argument 'prim_key' does not state the table's "
+                           "primary key. The items you plan to update can not "
+                           "be identified.")
+
+    def search_table(self, table, **kwargs):
+        """Basic search operation: search for key-value in DB table and filter
+        your data by passing keyword arguments. You can add '%' in a kwarg
+        for a wildcard search. One wildcard allowed at a time.
+
+        Args:
+            - table (sqlalchemy.ext.declarative class/str) : table object/name
+            - **kwargs : e.g. name="...", project="..."
+        """
+        if isinstance(table, str):
+            table = self.dbt.obj(table)
+        wildcard = {}
+        # check vor wildcards in kwargs
+        for key, val in kwargs.items():
+            try:
+                if "%" in val:
+                    wildcard[key] = val.replace("%", "")
+            except TypeError:
+                pass
+        if len(wildcard) > 1:
+            self.log.warning("Only 1 wildcard per search allowed!")
+            return None
+        # use wildcard + rest of kwargs to filter DB data
+        if wildcard != {}:
+            wc_key = list(wildcard.keys())[0]
+            kwargs.pop(wc_key)
+            data = self.session.query(table).filter(\
+                   getattr(table, wc_key).contains(\
+                   wildcard[wc_key])).filter_by(**kwargs)
+            return data
+        data = self.session.query(table).filter_by(**kwargs)
+        return data
+
 
     def get_dict(self, table, pk_value=None):
         """Returns dict with all key:value-pairs from table. To print a
         specific row pass its primary key value. Default is all rows of table.
 
         Args:
-            - table (sqlalchemy.ext.declarative class/str) : table object
+            - table (sqlalchemy.ext.declarative class/str) : table object/name
             - pk_value (type defined by table) : primary key value of item you
                                                  are looking for
 
@@ -181,17 +284,17 @@ class DBHandler(object):
                 self.session.add(table(**item))
                 self.session.commit()
                 return True
-            # self.log.info("Item succesfully added to DB...")
-        except Exception as err: # pylint: disable=W0703
-            if "Session.rollback()" in str(err):
-                pass
-            else:
-                self.log.info("Item could't be added to DB...")
-                self.log.debug(err)
-                self.log.debug(item)
-                raise ValueError
 
-    def update_value(self, table, attr, old_value, new_value):
+        except Exception as err: # pylint: disable=W0703
+            print(err)
+            # if "Session.rollback()" in str(err):
+            #     pass
+            # else:
+            #     self.log.error("Item couldn't be added to DB...")
+            #     self.log.debug(err)
+            #     self.log.debug(item)
+
+    def update_all_values(self, table, attr, old_value, new_value):
         """Update old to new value of all items in a certain DB table.
 
         Args:
@@ -207,8 +310,7 @@ class DBHandler(object):
         filter(getattr(table, attr) == old_value).\
         update({getattr(table, attr) : new_value})
 
-
-    def get_table_keys(self, table):
+    def get_table_info(self, table):
         """Retrieve a list of all keys of a DB table.
 
         Args:
@@ -217,11 +319,18 @@ class DBHandler(object):
         Returns:
             Table keys as list of strings.
         """
+        table_info = []
         if isinstance(table, str):
             table = self.dbt.obj(table)
+
         inst = sqlalchemy.inspect(table)
-        keys = [c_attr.key for c_attr in inst.mapper.column_attrs]
-        return keys
+        try:
+            table_info = [(c_attr.key, c_attr.type.python_type) \
+                         for c_attr in inst.mapper.columns]
+        except NotImplementedError:
+            self.log.warning("Type of DB column can not be translated "
+                             "into python type.")
+        return table_info
 
     def get_values(self, table, key, key_args=None):
         """Returns the values of a given key for all items in a DB table.
@@ -248,7 +357,7 @@ class DBHandler(object):
             return values[0]
         return values
 
-    def check_for_value(self, table, key, value):
+    def check_for_value(self, table, **kwargs):
         """Checks if key:value-pair is in DB table, e.g. sensor name (key=name,
         value="sensor name").
 
@@ -262,10 +371,10 @@ class DBHandler(object):
         """
         if isinstance(table, str):
             table = self.dbt.obj(table)
-        for val, in self.session.query(getattr(table, key)):
-            if value == val:
-                return True
-        return False
+        check = list(self.session.query(table).filter_by(**kwargs))
+        if check == []:
+            return False
+        return True
 
     def add_cross_ref(self, meas_data):
         """Add DB table cross-references to data.
@@ -307,14 +416,60 @@ class DBHandler(object):
                 meas_type = val
                 break
         meas_dict[HEADER].pop(self.meas_tk)
-
-        new_meas_dict = compare_dicts(meas_dict, self.table_ass)
-        new_meas_dict = convert_keys(new_meas_dict, self.key_ass[meas_type])
-        new_meas_dict = adjust_keys(new_meas_dict)
-
+        self.log.debug("Recieved data container %s", meas_dict)
+        try:
+            new_meas_dict = sort_keys_by_tables(meas_dict,
+                                                self.table_ass[meas_type])
+        except Exception as err_msg:#pylint: disable=W0703
+            self.log.warning("Untangling and sorting data was not succesfull")
+            self.log.warning(err_msg)
+            new_meas_dict = {}
         return new_meas_dict
 
-    def upload_data(self, data, option="upload only"):  # pylint: disable=R0912
+    def check_data_types(self, meas_dict): # pylint: disable=too-many-branches
+        """Loops through sorted data dictionary in order to check and
+        convert data types.
+        """
+        station = meas_dict.get('db_probe', dict).get('station', None)
+        if isinstance(station, str):
+            if station == "probe_left":
+                station = 1
+            elif station == "probe_right":
+                station = 2
+            meas_dict['db_probe']['station'] = station
+
+        for table, data in meas_dict.items():
+            info = self.get_table_info(table)
+            if isinstance(data, dict):
+                for db_key, db_type in info:
+                    try:
+                        meas_dict[table][db_key] = adjust_types(db_type, \
+                                            meas_dict[table][db_key])
+                    except ValueError:
+                        self.log.error("Error while converting key <%s> from "\
+                           "table <%s> to type <%s>", db_key, table, db_type)
+                        raise ValueError
+                    except TypeError:
+                        self.log.error("Error while converting key <%s> from "\
+                           "table <%s> to type <%s>", db_key, table, db_type)
+                        raise TypeError
+                    except KeyError:
+                        pass
+            if isinstance(data, list):
+                converted_lst = []
+                for dic in data:
+                    for db_key, db_type in info:
+                        try:
+                            dic[db_key] = adjust_types(db_type, dic[db_key])
+                        except ValueError:
+                            raise ValueError
+                        except KeyError:
+                            pass
+                    converted_lst.append(dic)
+                meas_dict[table] = converted_lst
+        return meas_dict
+
+    def upload_data(self, data, option="upload only"):  # pylint: disable=R0912, R1710
         """Add measurement to DB. Sorts data, converts keys and values
         according to DB table specifications.
 
@@ -326,21 +481,25 @@ class DBHandler(object):
                               "upload only" (this argument was added mainly for
                               debugging purposes)
         """
-        if isinstance(data, dict):
-            meas_data = data
-        else:
-            try:
-                # data is json string
-                meas_data = json.load(data)
-            except TypeError:
-                # data is json file
-                meas_data = json.loads(data)
-
-        meas_data = self.untangle_data(meas_data)
+        if not isinstance(data, dict):
+            self.log.warning("Recieved data container is expected to "
+                             "be of type dict.")
+            return False
+        # check data and sort it by DB table
+        meas_data = self.untangle_data(data)
+        if meas_data == {}:
+            self.log.warning("Upload request rejected")
+            return False
         # add missing table cross-reference key/values
         meas_data = self.add_cross_ref(meas_data)
+        # check value types and convert it if necessary
+        try:
+            meas_data = self.check_data_types(meas_data)
+        except (TypeError, ValueError):
+            self.log.warning("Can not convert data type")
+            return False
         # add data:
-        try:            #pylint: disable=R1702
+        try: #pylint: disable=R1702
             for table in meas_data:
                 if self.dbt.opt(table) == "once":
                     if option in ["both", "upload only"]:
@@ -364,8 +523,10 @@ class DBHandler(object):
                                 self.log.info(dic)
             if option in ["both", "upload only"]:
                 self.log.info("Upload finished...")
-        except ValueError:
+                return True
+        except: #pylint: disable=W0702
             self.log.warning("Upload was not succesful...")
+            return False
 
     def get_dbt(self):
         """Returns DBTable object.
@@ -376,12 +537,45 @@ class DBHandler(object):
         """Returns engine object"""
         return self.session
 
+    def _add_user_endpoints(self, api):
+        """Mendatory method for modules within the MC framework. Defines post
+        and get classes for module communication.
+        """
+        model = api.model("DBHandler",
+                          {"x" :  fields.Arbitrary(require=True, default=1)})
+
+        class DBHandlerData(Endpoint): # pylint: disable=R0903,W0612
+            """DBHandler data upload endpoint"""
+            @api.expect(model)
+            def post(self): # pylint: disable=R0201
+                """Add data point"""
+                req = json.loads(request.data)
+                for element in req:
+                    self.module.upload_data(element)
+                return "OK"
+
+        class DBHandlerCheck(Endpoint): # pylint: disable=R0903,W0612
+            """DBHandler check value endpoint"""
+            def get(self, table, key, value, key2=None, value2=None): # pylint: disable=too-many-arguments,R0201
+                """Check for value in DB table"""
+                dic = {}
+                dic[key] = value
+                if key2:
+                    dic[key2] = value2
+                ret = self.module.check_for_value(table, **dic)
+                return ret
+
+        self.add_endpoint(DBHandlerData, '/data')
+        self.add_endpoint(DBHandlerCheck,
+                          '/check/<string:table>/<string:key>/<string:value>')
+        self.add_endpoint(DBHandlerCheck,
+                          '/check/<string:table>/<string:key>/<string:value>/<string:key2>/<string:value2>')  #pylint: disable=line-too-long
 
 #########################################################
 ##################### DBTable Class #####################
 #########################################################
 
-class DBTable(object):
+class DBTable():
     """Class to simplify DB table handling.
 
     Methods:
@@ -397,7 +591,6 @@ class DBTable(object):
         """
         self.log = logging.getLogger("DBHandler.DBTable")
         self.log.setLevel(logging.DEBUG)
-
         self.cr_dict = cr_dict
 
         self.db_tables = {}
@@ -463,7 +656,7 @@ class DBTable(object):
             # in case it's the first upload
             if val is None:
                 val = [0]
-            return (info["para"], val[0])
+            return {info["para"]: val[0]}
 
     def obj(self, table):
         """Returns class object of table.
@@ -507,7 +700,6 @@ class DBTable(object):
 #########################################################
 
 
-
 def is_nested(table, tab_ass):
     """Returns 'True' if the data is nested list(list(dict{}...))
     """
@@ -528,181 +720,98 @@ def id_gen(start):
         yield counter + start
         counter = counter + 1
 
-def adjust_keys(meas_dict):
-    """JSON/YAML can't parse datetime onjects and None (python) or Null (Java)
-    type values. This must be done manually.
-    """
-    for _, table_data in meas_dict.items():
-        if isinstance(table_data, dict):
-            table_data = conv_null_date(table_data)
-        elif isinstance(table_data, list):
-            for data_item in table_data:
-                data_item = conv_null_date(data_item)
-    return meas_dict
-
-def conv_null_date(data_item):
-    """Dates need to be converted to datetime and 'NULL' to 'None'. 'None' will
-    be interpreted by sqlalchemy as 'NULL' while the uploading process.
-    """
-    if isinstance(data_item, list):
-        for dic in data_item:
-            for key, val in dic.items():
-                date = string_to_datetime(val)
-                if date is not False:
-                    dic[key] = date
-                elif val == "NULL":
-                    dic[key] = None
-    elif isinstance(data_item, dict):
-        for key, val in data_item.items():
-            date = string_to_datetime(val)
-            if date is not False:
-                data_item[key] = date
-            elif val == "NULL":
-                data_item[key] = None
-    return data_item
-
-
-def key_pop(dic, key, val):
-    """Changes key name while keeping the old value. If value is not existing
-    then a new key value pair is added to dict.
-    """
-    if val in dic.keys():
-        dic[key] = dic.pop(val)
-    else:
-        dic.update({key : val})
-    return dic
-
-
-def convert_keys(meas_dict, conv_dict):
-    """Convert key names so that they match the keys of a certain DB table.
-    This information is provided by the 'key assignment' specifications
-    in the cfg file.
+def sort_keys_by_tables(meas_dict, ass_dict):
+    """Sorts data by DB tables. Changes key names from data container into
+    key names that are expected from DB, checks for incomplete data containers
+    and adds constants (according to config file).
 
     Args:
-        - dic (dict)      : dict{ {table name : dict{ ... } },  ...}
-        - meas_type (str) : type of measurement
-    Returns:
-        Converted dict in equal format.
+        - meas_dict (dict): raw unsorted data container
+        - ass_dict (dict): sort structure given by cfg file
     """
-    for table_name, table_conv in conv_dict.items():    #pylint: disable = R1702
-        for key, val in table_conv.items():
-            if isinstance(meas_dict[table_name], dict):
-                meas_dict[table_name] = key_pop(meas_dict[table_name],
-                                                key, val)
+    new_meas_dict = copy.deepcopy(ass_dict)
+    for table in ass_dict[HEADER].keys():
+        for table_key, data_key in ass_dict[HEADER][table].items():
+            new_meas_dict[HEADER][table][table_key] \
+                    = return_data_val(meas_dict[HEADER], data_key)
 
-            elif isinstance(meas_dict[table_name], list):
-                for table_data in meas_dict[table_name]:
-                    if isinstance(table_data, dict):
-                        table_data = key_pop(table_data, key, val)
-                    # highest level of allowed data nesting
-                    elif isinstance(table_data, list):
-                        for dic in table_data:
-                            dic = key_pop(dic, key, val)
-    return meas_dict
-
-def compare_dicts(meas_dict, ass_dict):
-    """Compares 'table assignment' dict with data dict and sorts the key/values
-    with respect to the DB tables they relate to.
-    """
-    new_meas_dict = {}
-    # assign header items to DB table
-    for table, table_items in ass_dict[HEADER].items():
-        temp_dict = {}
-        for table_item in table_items:
-            if table_item in meas_dict[HEADER].keys():
-                temp_dict[table_item] = meas_dict[HEADER][table_item]
-        new_meas_dict[table] = temp_dict
-    meas_dict.pop(HEADER)
-
-    # assign data items to DB table
-    for head in DATA_HEADER:
-        for table, table_item in ass_dict[head].items():
-            new_meas_dict[table] = data_assignment(table_item, meas_dict[head])
-    return new_meas_dict
-
-def data_assignment(ass_item, data_item):
-    """sorts and assignes key/values according to the DB table they will be
-    uploaded into. Optional keys are emphazised by a '*' in the cfg file.
-    """
-    new_meas_list = []
-    if isinstance(ass_item, list):
-        for dic in data_item:
-            temp_dict = {}
-            for list_item in ass_item:
-                try:
-                    temp_dict[list_item] = dic[list_item]
-                except KeyError:
-                    if list_item.replace("*", "") in dic.keys():
-                        temp_dict[list_item.replace("*", "")] \
-                        = dic[list_item.replace("*", "")]
-                    elif list_item.replace("*", "") not in dic.keys():
-                        pass
+    for data in DATA_HEADER:
+        for table in ass_dict[data]:
+            new_meas_dict[data][table] = []
+            for data_dict in meas_dict[data]:
+                temp_dict = copy.deepcopy(ass_dict[data][table])
+                for table_key, data_key in ass_dict[data][table].items():
+                    if isinstance(data_key, dict):
+                        new_meas_dict[data][table] += \
+                return_nested_data(data_dict, table_key, data_key)
+                        temp_dict = None
                     else:
-                        raise KeyError("Unkown key stated in 'table "
-                                       "assignment' paragraph...")
-            new_meas_list.append(temp_dict)
-    elif isinstance(ass_item, dict):
-        subdict_name = list(ass_item.keys())[0].replace("*", "")
-        new_meas_list = get_nested_data(data_item, subdict_name)
-    return new_meas_list
+                        temp_dict[table_key] = return_data_val(data_dict,
+                                                               data_key)
+                if temp_dict is not None:
+                    new_meas_dict[data][table].append(temp_dict)
+    final_dict = {}
+    final_dict.update(new_meas_dict.pop(HEADER))
+    for data in DATA_HEADER:
+        final_dict.update(new_meas_dict.pop(data))
+    return final_dict
 
+def return_nested_data(dic, key, val_dict):
+    """Nested data is collected from dict, sorted according to val_dict
+    (cfg file), bundled and then returned as a list.
 
-def get_nested_data(dict_list, name):
-    """Returns nested items from a list of dicts. If there are no nested items
-    then a empty list is returned.
+    Args:
+        - dic (dict): raw data dict which contains the nested data
+        - key (dict key): its value contains the nested data
+        - val_dict (dict): sort structure given by cfg file
     """
-    new_list = []
-    for dic in dict_list:
-        for key in dic.keys():
-            if key == name:
-                new_list.append(dic[key])
-    return new_list
+    lst = []
+    for nested_dict in dic[key]:
+        temp_dict = {}
+        for nested_key, nested_val in val_dict.items():
+            temp_dict.update({nested_key:
+                              return_data_val(nested_dict, nested_val)})
+        lst.append(temp_dict)
+    return lst
+
+def return_data_val(dic, data_key):
+    """Returns the valus of a specific key. Checks if key is in dic and if it's
+    a mandatory key (raises value if not present) or a DB constant.
+    """
+    if data_key not in dic.keys() and "*" not in data_key:
+        raise ValueError("Incomplete dict: mandatory key {} not found.".format(
+            data_key))
+    if "*" in data_key:
+        return data_key.replace("*", "")
+    return dic[data_key]
 
 def string_to_datetime(string):
-    """Converts strings of format 'dd.mm.yyyy h:min:sec' to datetime object.
+    """Converts strings of central European format 'dd.mm.yyyy h:min:sec'
+    or US format 'yyyy-mm-dd h:min:sec' to datetime object. Milliseconds are
+    optional for US format.
     """
-    try:
+    if "." in string[:6]:
         datetime_obj = datetime.datetime.strptime(string, "%d.%m.%Y %X")
         return datetime_obj
-    except ValueError:
+    if "-" in string[:6]:
         try:
             datetime_obj = datetime.datetime.strptime(string, "%Y-%m-%d %X")
             return datetime_obj
-        except (ValueError, TypeError):
-            return False
+        except ValueError:
+            datetime_obj = datetime.datetime.strptime(string, "%Y-%m-%d %X.%f")
+            return datetime_obj
+    raise ValueError
 
-def insert_default_paras(meas_data, conv_dict):
-    """Check if keys of DB table are missing and insert default key/values
-    if that is the case. These parameters are given by the 'key assignment'
-    paragraph in DB cfg file.
+def adjust_types(db_type, val):
+    """Compares type of value with expected type in DB column and converts it
+    if necessary.
     """
-    for table, conv_values in conv_dict.items():
-        for key, val in conv_values.items():
-            if isinstance(meas_data[table], dict):
-                if key not in meas_data[table].keys():
-                    meas_data[table][key] = val
-            elif isinstance(meas_data[table], dict):
-                for dic in meas_data[table]:
-                    if key not in dic.keys():
-                        dic[key] = val
-
-    return meas_data
-
-# if __name__ == '__main__':
-#     DB = DBHandler()
-    # DB = DBHandler(os.path.join(os.getcwd(),
-    #                             "models\\pytester\\Pytester_DB_new.cfg"))
-    # sensor = yaml.load(open("..\\test\\test_sensor.yml"))
-    # data = {'header': {'measurement': 'IV', 'name': 'Andreas_1',
-    #                    'project': 'DBHandler', 'operator': 'Metzler',
-    #                    'date': '29.05.2018 15:00:00'},
-    #         'data': [{'id': 0, 'High_Voltage_set': '0',
-    #                   'Amperemeter_get': -7.11469e-08},
-    #                  {'id': 1, 'High_Voltage_set': '1',
-    #                   'Amperemeter_get': 9.042474e-07},
-    #                  {'id': 2, 'High_Voltage_set': '2',
-    #                   'Amperemeter_get': 1.898752e-06},
-    #                  {'id': 3, 'High_Voltage_set': '3',
-    #                   'Amperemeter_get': 2.874317e-06}]}
-    # DB.upload_data(data, "print only")
-    # print(DB.get_dict("db_info_test"))
+    if db_type == datetime.datetime:
+        return string_to_datetime(val)
+    if isinstance(val, db_type):
+        return val
+    if val in ["true", "True"]:
+        return True
+    if val in ["False", "false"]:
+        return False
+    return db_type(val)

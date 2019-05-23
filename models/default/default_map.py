@@ -1,6 +1,6 @@
 """Default SQLite metadata"""
-# pylint: disable=C0111, C0103, R0903, R0201
-from sqlalchemy import BigInteger, Column, Integer, String, Float, DateTime
+# pylint: disable=C0111, C0103, R0903, R0201, E0402
+from sqlalchemy import Boolean, Column, Integer, String, Float, DateTime
 from sqlalchemy import Date, Enum
 from ..meta import BASE
 
@@ -42,13 +42,17 @@ class db_probe(BASE):
     paraZ = Column(String)
     date = Column(DateTime)
     operator = Column(String)
+    temperature = Column(Float)
+    flag = Column(String)
+    guardring = Column(Boolean)
 
 class db_probe_data(BASE):
 
     __tablename__ = "probe_data"
 
-    probe_uid = Column(BigInteger().with_variant(Integer, "sqlite"),
-                       primary_key=True, autoincrement=True)
+    # probe_uid = Column(BigInteger().with_variant(Integer, "sqlite"),
+    #                    primary_key=True, autoincrement=True)
+    probe_uid = Column(Integer, primary_key=True, autoincrement=True)
     probeid = Column(Integer)
     datax = Column(Float)
     datay = Column(Float)

@@ -1,7 +1,7 @@
-# pylint: disable=C0111, C0103, R0903, R0201
+# pylint: disable=C0111, C0103, R0903, R0201, E0402
+import datetime
 from sqlalchemy import BigInteger, Column, Integer, String, Float, DateTime
 from sqlalchemy import Date, Enum
-import datetime
 from ..meta import BASE
 
 class db_info_test(BASE):

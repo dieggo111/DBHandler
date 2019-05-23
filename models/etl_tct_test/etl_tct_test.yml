@@ -1,0 +1,96 @@
+################################################################################
+######################## ETP Measurement DB Config File ########################
+################################################################################
+
+#TODO
+
+engine : mysql+mysqlconnector
+
+#credentials :   /home/readout/Alex/TCTStation/MeasurementControl/measurementcontrol/etl_tct_test_cred.pkl
+credentials :   etl_tct_test_cred.pkl
+
+map         :   dbhandler.models.etl_tct_test.etl_tct_test_map
+
+tables      :
+        etl_tct_run       : upload=once
+        etl_tct_pulse     : upload=always #always
+        etl_tct_cfd_time  : upload=always #always
+
+cross-reference:
+      etl_tct_pulse:
+                      table name : etl_tct_run
+                      para : runid
+                      para option : latest
+                      keyword : None
+
+      etl_tct_cfd_time:
+                      table name : etl_tct_pulse
+                      para : pulseid
+                      para option : ascending
+                      keyword : None
+
+table assignment:
+    header:
+          etl_tct_run:
+              - runid
+              - temperature
+              - bias_voltage
+              - scope
+              - operator
+              - humidity
+              - comment
+              - rawdata_localpath
+              - sensorid
+              - bias_current
+              - time
+              - measurement_type
+              - flag
+              - signal_source
+              - board
+              - board_channel
+              - reference
+          # etl_tct_pulse:
+          #     - runid
+
+    data:
+          etl_tct_pulse:
+                - eventid
+                - risetime
+                - charge
+                - signalheight
+                - slope
+                - pulselength
+                - noise
+                - scope_channel
+                - pulse_source
+
+          etl_tct_cfd_time:
+              cfd_infos:
+                  - fraction
+                  - time
+
+
+
+
+key assignment:
+
+    TCT_pulse_processed:
+          etl_tct_pulse:
+                risetime: risetime
+                # eventid: eventid
+                # charge: charge
+                # signalheight: signalheight
+                # slope: slope
+                # pulselength: pulselength
+                # noise: noise
+          etl_tct_run:
+                bias_voltage: bias_voltage
+                # scope: scope
+                operator: operator
+                # humidity: humidity
+                # comment: comment
+                # rawdata_localpath: rawdata_localpath
+                # sensorid: sensorid
+
+
+measurement type key: measurement
