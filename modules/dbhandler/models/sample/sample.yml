@@ -17,9 +17,9 @@
 ###########################################################################
 engine : mysql+mysqlconnector
 
-credentials :   cred_sample.cfg
+credentials :   ..\..\..\cred_sample.cfg
 
-map         :   measurementcontrol.modules.dbhandler.models.sample.sample_map
+map         :   DBHandler.modules.dbhandler.models.sample.sample_map
 
 tables      :
                 db_info              : upload=never

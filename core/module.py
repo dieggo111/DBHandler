@@ -22,7 +22,7 @@ from flask import Flask, request, make_response
 from flask_restplus import Api, Resource
 from flask_cors import CORS
 
-from measurementcontrol import utility
+from DBHandler import utility
 
 class Endpoint(Resource): #pylint: disable=too-few-public-methods
     """ HTTP endpoint base class """

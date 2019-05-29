@@ -19,15 +19,7 @@ except (ModuleNotFoundError, ImportError):
 # absolute path of dbhandler module
 MODPATH = os.path.dirname(\
     os.path.abspath(inspect.getfile(inspect.currentframe())))
-try:
-    from measurementcontrol.core import Module, Endpoint
-# in case DBHandler is imported from an arbitrary location
-except (ModuleNotFoundError, ImportError):
-    from pathlib import Path
-    MODPATH = os.path.dirname(\
-        os.path.abspath(inspect.getfile(inspect.currentframe())))
-    sys.path.insert(0, str(Path(MODPATH).parents[2]))
-    from measurementcontrol.core import Module, Endpoint
+from DBHandler.core import Module
 
 DEFAULT_MODEL = os.path.join("models", "default", "default.yml")
 # define header names of incomming data
