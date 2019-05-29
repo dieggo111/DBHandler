@@ -1,3 +1,4 @@
-"""DBHandler package."""
-from .models import BASE
-from .dbhandler import DBHandler
+""" The module package """
+
+from .modules import DBHandler
+from .core import module

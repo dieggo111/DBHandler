@@ -7,14 +7,27 @@ import json
 import inspect
 import copy
 from pydoc import locate
+from flask import request
+from flask_restplus import fields
 import yaml
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
+try:
+    from .models import meta
+except (ModuleNotFoundError, ImportError):
+    from models import meta
+# absolute path of dbhandler module
 MODPATH = os.path.dirname(\
     os.path.abspath(inspect.getfile(inspect.currentframe())))
-print(MODPATH)
-
-from DBHandler.core import Module, Endpoint
+try:
+    from measurementcontrol.core import Module, Endpoint
+# in case DBHandler is imported from an arbitrary location
+except (ModuleNotFoundError, ImportError):
+    from pathlib import Path
+    MODPATH = os.path.dirname(\
+        os.path.abspath(inspect.getfile(inspect.currentframe())))
+    sys.path.insert(0, str(Path(MODPATH).parents[2]))
+    from measurementcontrol.core import Module, Endpoint
 
 DEFAULT_MODEL = os.path.join("models", "default", "default.yml")
 # define header names of incomming data
@@ -524,43 +537,39 @@ class DBHandler(Module): #pylint: disable=R0902
         """Returns engine object"""
         return self.session
 
-#########################################################
-################# MC Framework method ###################
-#########################################################
+    def _add_user_endpoints(self, api):
+        """Mendatory method for modules within the MC framework. Defines post
+        and get classes for module communication.
+        """
+        model = api.model("DBHandler",
+                          {"x" :  fields.Arbitrary(require=True, default=1)})
 
-    # def _add_user_endpoints(self, api):
-    #     """Mendatory method for modules within the MC framework. Defines post
-    #     and get classes for module communication.
-    #     """
-    #     model = api.model("DBHandler",
-    #                       {"x" :  fields.Arbitrary(require=True, default=1)})
-    #
-    #     class DBHandlerData(Endpoint): # pylint: disable=R0903,W0612
-    #         """DBHandler data upload endpoint"""
-    #         @api.expect(model)
-    #         def post(self): # pylint: disable=R0201
-    #             """Add data point"""
-    #             req = json.loads(request.data)
-    #             for element in req:
-    #                 self.module.upload_data(element)
-    #             return "OK"
-    #
-    #     class DBHandlerCheck(Endpoint): # pylint: disable=R0903,W0612
-    #         """DBHandler check value endpoint"""
-    #         def get(self, table, key, value, key2=None, value2=None): # pylint: disable=too-many-arguments,R0201
-    #             """Check for value in DB table"""
-    #             dic = {}
-    #             dic[key] = value
-    #             if key2:
-    #                 dic[key2] = value2
-    #             ret = self.module.check_for_value(table, **dic)
-    #             return ret
-    #
-    #     self.add_endpoint(DBHandlerData, '/data')
-    #     self.add_endpoint(DBHandlerCheck,
-    #                       '/check/<string:table>/<string:key>/<string:value>')
-    #     self.add_endpoint(DBHandlerCheck,
-    #                       '/check/<string:table>/<string:key>/<string:value>/<string:key2>/<string:value2>')  #pylint: disable=line-too-long
+        class DBHandlerData(Endpoint): # pylint: disable=R0903,W0612
+            """DBHandler data upload endpoint"""
+            @api.expect(model)
+            def post(self): # pylint: disable=R0201
+                """Add data point"""
+                req = json.loads(request.data)
+                for element in req:
+                    self.module.upload_data(element)
+                return "OK"
+
+        class DBHandlerCheck(Endpoint): # pylint: disable=R0903,W0612
+            """DBHandler check value endpoint"""
+            def get(self, table, key, value, key2=None, value2=None): # pylint: disable=too-many-arguments,R0201
+                """Check for value in DB table"""
+                dic = {}
+                dic[key] = value
+                if key2:
+                    dic[key2] = value2
+                ret = self.module.check_for_value(table, **dic)
+                return ret
+
+        self.add_endpoint(DBHandlerData, '/data')
+        self.add_endpoint(DBHandlerCheck,
+                          '/check/<string:table>/<string:key>/<string:value>')
+        self.add_endpoint(DBHandlerCheck,
+                          '/check/<string:table>/<string:key>/<string:value>/<string:key2>/<string:value2>')  #pylint: disable=line-too-long
 
 #########################################################
 ##################### DBTable Class #####################
