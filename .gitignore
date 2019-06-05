@@ -9,3 +9,4 @@ __pycache__
 mySQlite.db
 mySQlite.db-journal
 .gitignore
+cred_sample.cfg

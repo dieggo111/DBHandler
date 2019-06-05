@@ -16,11 +16,11 @@ try:
     from .models import meta
 except (ModuleNotFoundError, ImportError):
     from models import meta
+from DBHandler.core import Module
 # absolute path of dbhandler module
 MODPATH = os.path.dirname(\
     os.path.abspath(inspect.getfile(inspect.currentframe())))
-from DBHandler.core import Module
-
+# MODPATH = os.getcwd()
 DEFAULT_MODEL = os.path.join("models", "default", "default.yml")
 # define header names of incomming data
 HEADER = "header"        # header name is mendatory
@@ -85,7 +85,6 @@ class DBHandler(Module): #pylint: disable=R0902
                                 'models/{0}/{0}.yml'.format(model)))
         else:
             db_cfg = self.load_cfg(self.cfg_path)
-
         self.dbt = DBTable(map_file=db_cfg["map"], #pylint: disable=W0201
                            table_dict=db_cfg["tables"],
                            cr_dict=db_cfg["cross-reference"])
@@ -96,11 +95,21 @@ class DBHandler(Module): #pylint: disable=R0902
             session = sessionmaker(bind=engine)
             self.session = session() #pylint: disable=W0201
         elif db_cfg["engine"] == "mysql+mysqlconnector":
-            if os.path.isabs(db_cfg["credentials"]):
+            print(os.path.join(MODPATH, "credentials", db_cfg["credentials"]),
+                  os.path.isfile(os.path.join(MODPATH, "credentials", db_cfg["credentials"])))
+            if os.path.isfile(db_cfg["credentials"]):
                 cred = self.load_cred(db_cfg["credentials"])
-            else:
-                cred = self.load_cred(os.path.join(MODPATH,
+            elif os.path.isfile(os.path.join(
+                    MODPATH, "credentials", db_cfg["credentials"])):
+                cred = self.load_cred(os.path.join(
+                    MODPATH, "credentials", db_cfg["credentials"]))
+            elif os.path.isfile(
+                    os.path.join(os.getcwd(), db_cfg["credentials"])):
+                cred = self.load_cred(os.path.join(os.getcwd(),
                                                    db_cfg["credentials"]))
+            else:
+                raise FileNotFoundError("Couldn't find or read credentials...")
+
             engine = sqlalchemy.create_engine(db_cfg["engine"]
                                               + "://"
                                               + cred["user"] + ":"
@@ -127,12 +136,9 @@ class DBHandler(Module): #pylint: disable=R0902
 
     def load_cred(self, arg):
         """Handles the import of credentials"""
-        try:
-            cred = yaml.load(open(arg, "rb"))
-            self.log.debug("Loaded credentials from %s", arg)
-            return cred
-        except FileNotFoundError:
-            self.log.error("Couldn't find or read credentials...")
+        cred = yaml.load(open(arg, "rb"))
+        self.log.debug("Loaded credentials from %s", arg)
+        return cred
 
     def load_cfg(self, db_cfg):
         """Handles the import of cfg dict.
