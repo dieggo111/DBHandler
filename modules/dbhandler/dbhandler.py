@@ -1,14 +1,11 @@
+#pylint: disable=R0912
 "DBHandler module"
 import logging
 import os
-import sys
 import datetime
-import json
 import inspect
 import copy
 from pydoc import locate
-from flask import request
-from flask_restplus import fields
 import yaml
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
@@ -95,14 +92,15 @@ class DBHandler(Module): #pylint: disable=R0902
             session = sessionmaker(bind=engine)
             self.session = session() #pylint: disable=W0201
         elif db_cfg["engine"] == "mysql+mysqlconnector":
-            print(os.path.join(MODPATH, "credentials", db_cfg["credentials"]),
-                  os.path.isfile(os.path.join(MODPATH, "credentials", db_cfg["credentials"])))
+            # if absolute path is given by cfg file
             if os.path.isfile(db_cfg["credentials"]):
                 cred = self.load_cred(db_cfg["credentials"])
+            # check dedicated credentials folder for credentials file
             elif os.path.isfile(os.path.join(
                     MODPATH, "credentials", db_cfg["credentials"])):
                 cred = self.load_cred(os.path.join(
                     MODPATH, "credentials", db_cfg["credentials"]))
+            # check working directory for credentials file
             elif os.path.isfile(
                     os.path.join(os.getcwd(), db_cfg["credentials"])):
                 cred = self.load_cred(os.path.join(os.getcwd(),
@@ -535,39 +533,6 @@ class DBHandler(Module): #pylint: disable=R0902
         """Returns engine object"""
         return self.session
 
-    def _add_user_endpoints(self, api):
-        """Mendatory method for modules within the MC framework. Defines post
-        and get classes for module communication.
-        """
-        model = api.model("DBHandler",
-                          {"x" :  fields.Arbitrary(require=True, default=1)})
-
-        class DBHandlerData(Endpoint): # pylint: disable=R0903,W0612
-            """DBHandler data upload endpoint"""
-            @api.expect(model)
-            def post(self): # pylint: disable=R0201
-                """Add data point"""
-                req = json.loads(request.data)
-                for element in req:
-                    self.module.upload_data(element)
-                return "OK"
-
-        class DBHandlerCheck(Endpoint): # pylint: disable=R0903,W0612
-            """DBHandler check value endpoint"""
-            def get(self, table, key, value, key2=None, value2=None): # pylint: disable=too-many-arguments,R0201
-                """Check for value in DB table"""
-                dic = {}
-                dic[key] = value
-                if key2:
-                    dic[key2] = value2
-                ret = self.module.check_for_value(table, **dic)
-                return ret
-
-        self.add_endpoint(DBHandlerData, '/data')
-        self.add_endpoint(DBHandlerCheck,
-                          '/check/<string:table>/<string:key>/<string:value>')
-        self.add_endpoint(DBHandlerCheck,
-                          '/check/<string:table>/<string:key>/<string:value>/<string:key2>/<string:value2>')  #pylint: disable=line-too-long
 
 #########################################################
 ##################### DBTable Class #####################
