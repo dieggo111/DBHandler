@@ -533,6 +533,9 @@ class DBHandler(Module): #pylint: disable=R0902
         """Returns engine object"""
         return self.session
 
+    def get_table_ass(self):
+        return self.table_ass
+
 
 #########################################################
 ##################### DBTable Class #####################
