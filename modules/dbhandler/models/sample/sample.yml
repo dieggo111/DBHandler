@@ -8,7 +8,7 @@
 # credentials: Path to file containing DB credentials. Can be absolute or
 #              relative to dbhandler folder
 # map: Location of DB map file. Use python package import style syntax
-#      relative("." as a folder separator, no file extension) to a folder
+#      ("." as a folder separator, no file extension) relative to a folder
 #      listed in sys.path (e.g. working directory)
 # tables: names of the table classes (not table names!)
 # measurement type key: Name of header key that defines the measurement
@@ -17,7 +17,7 @@
 ###########################################################################
 engine : mysql+mysqlconnector
 
-credentials :   ...\..\credentials\cred_sample.cfg
+credentials :   cred_sample.cfg
 
 map         :   DBHandler.modules.dbhandler.models.sample.sample_map
 
@@ -77,6 +77,7 @@ table assignment:
                                     time: timestamp
                                     temperature: temperature
                                     RH: humidity
+                                    bias_current: biascurrent
 
     cv:
         header:
