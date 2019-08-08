@@ -97,9 +97,10 @@ class DBHandler(Module): #pylint: disable=R0902
         elif db_cfg["engine"] == "mysql+mysqlconnector":
             if os.path.isfile(db_cfg["credentials"]):
                 cred = self.load_cred(db_cfg["credentials"])
-            elif os.path.isfile(os.path.join(MODPATH, db_cfg["credentials"])):
-                cred = self.load_cred(os.path.join(MODPATH,
-                                                   db_cfg["credentials"]))
+            elif os.path.isfile(os.path.join(
+                    MODPATH, "credentials", db_cfg["credentials"])):
+                cred = self.load_cred(os.path.join(
+                    MODPATH, "credentials", db_cfg["credentials"]))
             elif os.path.isfile(
                     os.path.join(os.getcwd(), db_cfg["credentials"])):
                 cred = self.load_cred(os.path.join(os.getcwd(),
@@ -133,7 +134,7 @@ class DBHandler(Module): #pylint: disable=R0902
 
     def load_cred(self, arg):
         """Handles the import of credentials"""
-        cred = yaml.load(open(arg, "rb"))
+        cred = yaml.load(open(arg, "rb"), Loader=yaml.FullLoader)
         self.log.debug("Loaded credentials from %s", arg)
         return cred
 
@@ -148,7 +149,7 @@ class DBHandler(Module): #pylint: disable=R0902
             if db_cfg == "default":
                 db_cfg = os.path.join(MODPATH, DEFAULT_MODEL)
             with open(db_cfg, "r") as cfg:
-                db_cfg = yaml.load(cfg)
+                db_cfg = yaml.load(cfg, Loader=yaml.FullLoader)
                 cfg.close()
             return db_cfg
         except TypeError:
