@@ -1,0 +1,12 @@
+flask==1.0.3
+flask_restplus==0.12.1
+flask-cors==3.0.7
+requests==2.22.0
+SQLAlchemy==1.3.3
+mysql-connector-python==8.0.16
+pyvisa==1.9.1
+pyserial==3.4
+pyvisa==1.9.1
+pyserial==3.4
+PyDAQmx==1.4.2
+flatten_dict==0.0.3.post1
