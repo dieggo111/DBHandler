@@ -17,7 +17,7 @@
 ###########################################################################
 engine : mysql+mysqlconnector
 
-credentials :   cred_sample.cfg
+credentials :   cred_bachelor.cfg
 
 map         :   DBHandler.modules.dbhandler.models.sample.sample_map
 
